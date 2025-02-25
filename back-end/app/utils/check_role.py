@@ -1,4 +1,3 @@
-from quart import jsonify
 from app.utils.util_functions import get_api_key
 
 async def is_admin():

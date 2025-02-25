@@ -1,8 +1,7 @@
 from quart import jsonify, request, websocket
 from app.database.connection import schedule_collection, user_collection
 from app.schemas.student import MeetingRooms, LoginUser
-
-active_connections = set()
+from app.services.active_connections import active_connections  # Import global active_connections
 
 class StudentService:
     @staticmethod
@@ -62,19 +61,6 @@ class StudentService:
         response.status_code = 500
         return response
       
-    async def book_room():
-        admin = {"role": "admin"}
-        existing_admins = await user_collection.find(admin).to_list(length=None)
-
-        for conn in list(active_connections): 
-            try:
-                await conn.send_json({"message": "Hello, room booked!"})
-            except Exception as e:
-                print(f"Error sending message: {e}")
-                active_connections.remove(conn)  
-
-        return {"message": "Room booked successfully!"}
-
     @staticmethod
     async def handle_websocket():
         conn = websocket._get_current_object()
@@ -85,4 +71,4 @@ class StudentService:
         except:
             pass
         finally:
-            active_connections.remove(conn)  
+            active_connections.remove(conn)

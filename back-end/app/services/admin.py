@@ -10,6 +10,9 @@ from app.models.users import User
 from app.schemas.admin import BookRoom, CancelBooking
 from app.schemas.student import UserSchema
 
+from quart import websocket
+from app.services.active_connections import active_connections
+
 utc_timezone = pytz.UTC  
 
 connect("classrooms", host="mongodb://localhost:27017/classrooms")
@@ -104,3 +107,17 @@ class AdminService:
     user_db = User(**user_data).to_dict()
     await user_collection.insert_one(user_db)
     return {"message":f"user added successfully with name {user.name} and with unique code {user.secret_code}"}
+  
+  staticmethod
+  async def handle_websocket():
+        conn = websocket._get_current_object()  # Get current WebSocket connection
+        active_connections.add(conn)  # Add connection to active_connections
+        try:
+            while True:
+                message = await websocket.receive()  # Wait for messages from WebSocket
+                print(f"Received message: {message}")
+                await websocket.send(f"Echo: {message}")  # Echo the received message back
+        except Exception as e:
+            print(f"WebSocket error: {e}")
+        finally:
+            active_connections.remove(conn)

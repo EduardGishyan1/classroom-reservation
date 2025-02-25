@@ -1,7 +1,10 @@
-from quart import Blueprint, request, jsonify
+from quart import Blueprint, request, jsonify, websocket
+import websockets
 from app.services.admin import AdminService
 from app.schemas.admin import DeleteStudent, BookRoom, CancelBooking
 from app.utils.check_role import is_admin
+
+from app.services.active_connections import active_connections
 
 router = Blueprint("/admin", __name__, url_prefix="/admin")
 
@@ -70,3 +73,48 @@ async def create_student():
   
   except Exception:
     return jsonify({"error":"An error occurred"}),400
+
+@router.route("/notifications", methods=["GET"])
+async def notifications():
+    try:
+        async with websockets.connect("ws://127.0.0.1:5000/ws") as ws:
+            await ws.send("Admin connected!")
+            msg = await ws.recv()
+            return jsonify({"message": msg})
+    except Exception as e:
+        return jsonify({"error": "Failed to connect to WebSocket"}), 500
+    
+@router.websocket("/ws")
+async def admin_ws_connection():
+    conn = websocket._get_current_object()
+    active_connections.add(conn)
+    try:
+        while True:
+            message = await websocket.receive()
+            await websocket.send(f"Message received: {message}")
+    except Exception as e:
+        return jsonify({"error":f"WebSocket error: {e}"})
+    finally:
+        active_connections.remove(conn)  
+
+@router.websocket("/student-ws")
+async def student_ws_connection():
+    conn = websocket._get_current_object()
+    active_connections.add(conn)
+
+    try:
+        while True:
+            message = await websocket.receive()
+
+            await broadcast_to_admins(f"Notification from Student: {message}")
+    except Exception as e:
+        return jsonify({"error":f"Error with WebSocket connection: {e}"})
+    finally:
+        active_connections.remove(conn)  
+        
+async def broadcast_to_admins(message: str):
+    for conn in list(active_connections): 
+        try:
+            await conn.send(message)
+        except Exception as e:
+            active_connections.remove(conn)  
