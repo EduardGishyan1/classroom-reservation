@@ -6,7 +6,7 @@ from app.utils.check_role import is_admin
 
 from app.services.active_connections import active_connections
 
-router = Blueprint("/admin", __name__, url_prefix="/admin")
+router = Blueprint("/admin", __name__, url_prefix="/admins")
 
 @router.route("/book-room", methods = ["POST"])
 async def book_room():
@@ -19,7 +19,8 @@ async def book_room():
   except:
     return jsonify({"error":"Enter valid values for booking"}),400
   try:
-    booking = await AdminService.book_room(book_room_schema)
+    book_room_data = book_room_schema.model_dump()
+    booking = await AdminService.book_room(book_room_data)
     return booking
   except:
     return jsonify({"error":"something went wrong"}),400
@@ -95,26 +96,4 @@ async def admin_ws_connection():
     except Exception as e:
         return jsonify({"error":f"WebSocket error: {e}"})
     finally:
-        active_connections.remove(conn)  
-
-@router.websocket("/student-ws")
-async def student_ws_connection():
-    conn = websocket._get_current_object()
-    active_connections.add(conn)
-
-    try:
-        while True:
-            message = await websocket.receive()
-
-            await broadcast_to_admins(f"Notification from Student: {message}")
-    except Exception as e:
-        return jsonify({"error":f"Error with WebSocket connection: {e}"})
-    finally:
-        active_connections.remove(conn)  
-        
-async def broadcast_to_admins(message: str):
-    for conn in list(active_connections): 
-        try:
-            await conn.send(message)
-        except Exception as e:
-            active_connections.remove(conn)  
+        active_connections.remove(conn)

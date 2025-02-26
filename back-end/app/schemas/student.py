@@ -1,10 +1,11 @@
 from pydantic import BaseModel, Field, EmailStr
 from enum import Enum
-from datetime import datetime
+from app.models.shcedules import ActivityType
 
 class Roles(Enum):
 	STUDENT = "student"
 	ADMIN = "admin"
+
 
 class UserSchema(BaseModel):
 	name: str = Field(...,min_length=2,max_length=50)
@@ -16,14 +17,13 @@ class UserSchema(BaseModel):
 	secret_code:str
 
 class BookingNotification(BaseModel):
-	user_name: str
-	room_name: str
-	start_time: str
-	end_time: str
-	group_name: str
-	capacity: int
-	activity: str
-	created_at: datetime
+  room_name: str
+  start: str
+  end: str
+  date:str
+  capacity: int
+  activity: ActivityType
+  group_name: str
 
 class CancelRoom(BaseModel):
 	room_name: str

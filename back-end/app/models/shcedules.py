@@ -1,5 +1,4 @@
-from mongoengine import Document, EmbeddedDocument, StringField, IntField, DateTimeField, EnumField, ListField, EmbeddedDocumentField
-from datetime import datetime
+from mongoengine import Document, EmbeddedDocument, StringField, IntField, DateTimeField, EnumField, BooleanField, EmbeddedDocumentField
 from enum import Enum
 
 class ActivityType(Enum):
@@ -19,6 +18,7 @@ class Schedule(Document):
   end = DateTimeField(required=True)
   group_name = StringField(required=True)
   activity = EnumField(ActivityType, required=True)
+  is_fixed = BooleanField(required=True)
 
   def to_dict(self):
         return {
@@ -29,5 +29,6 @@ class Schedule(Document):
             "start": self.start,
             "end": self.end,
             "group_name": self.group_name,
-            "activity": self.activity.value
+            "activity": self.activity.value,
+            "is_fixed": self.is_fixed
         }

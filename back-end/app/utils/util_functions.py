@@ -13,7 +13,6 @@ def generate_api_key(length: int = 6) -> str:
     secret_code = secrets.token_hex(length // 2) 
     return secret_code
 
-
 def get_api_key():
     api_key = session.get("x-api-key")
 

@@ -4,6 +4,8 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     MONGO_URI: str
+    SLACK_BOT_TOKEN: str
+    SECRET_KEY: str
 
     model_config = ConfigDict(env_file = ".env", env_file_encoding = "utf-8")
 

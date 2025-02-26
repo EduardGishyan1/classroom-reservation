@@ -9,10 +9,11 @@ class BookRoom(BaseModel):
   room_name: str
   start: str
   end: str
+  date:str
   capacity: int
   activity: str
   group_name: str
-
+  is_fixed: bool
 
 class CancelBooking(BaseModel):
   room_name: str

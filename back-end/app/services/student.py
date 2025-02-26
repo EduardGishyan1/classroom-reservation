@@ -1,7 +1,5 @@
-from quart import jsonify, request, websocket
-from app.database.connection import schedule_collection, user_collection
-from app.schemas.student import MeetingRooms, LoginUser
-from app.services.active_connections import active_connections  # Import global active_connections
+from app.database.connection import schedule_collection
+from app.schemas.student import MeetingRooms
 
 class StudentService:
     @staticmethod
@@ -26,49 +24,39 @@ class StudentService:
       return room_info
 
     @staticmethod
-    async def filter_room(name: str, room_type: str):
+    async def filter_room(name: str | None, room_type: str | None):
         all_rooms = await StudentService.get_all_rooms()
         filtered_rooms = {}
 
         for room_name, room_list in all_rooms.items():
             is_meeting_room = room_name.lower() in {room.value.lower() for room in MeetingRooms}
             category = "MeetingRoom" if is_meeting_room else "Classroom"
-            if name.lower() == room_name.lower() and category.lower() == room_type.lower():
+
+            if name is None and room_type is None:
                 filtered_rooms[room_name] = {
                     "category": category,
                     "schedules": room_list
                 }
+        
+            elif name and room_type:
+                if name.lower() == room_name.lower() and category.lower() == room_type.lower():
+                    filtered_rooms[room_name] = {
+                        "category": category,
+                        "schedules": room_list
+                    }
+        
+            elif name:
+                if name.lower() == room_name.lower():
+                    filtered_rooms[room_name] = {
+                        "category": category,
+                        "schedules": room_list
+                    }
+        
+            elif room_type:
+                if category.lower() == room_type.lower():
+                    filtered_rooms[room_name] = {
+                        "category": category,
+                        "schedules": room_list
+                    }
 
         return filtered_rooms
-    
-    async def login():
-      try:
-        arguments = await request.get_json()
-        login_data = LoginUser(**arguments)
-        existing_user = await user_collection.find_one({"secret_code": login_data.secret_code, "name": login_data.name})
-        if existing_user:
-            response = jsonify({"message": "Logged in successfully"})
-            response.status_code = 200  
-            response.role = existing_user.get("role")
-            return response
-
-        response = jsonify({"error": "Invalid credentials"})
-        response.status_code = 400
-        return response
-      
-      except Exception as e:
-        response = jsonify({"error": f"An error occurred during login: {str(e)}"})
-        response.status_code = 500
-        return response
-      
-    @staticmethod
-    async def handle_websocket():
-        conn = websocket._get_current_object()
-        active_connections.add(conn)
-        try:
-            while True:
-                await websocket.receive()  
-        except:
-            pass
-        finally:
-            active_connections.remove(conn)

@@ -5,9 +5,9 @@ from quart import jsonify
 from mongoengine import connect
 
 from app.database.connection import user_collection,schedule_collection
-from app.models.shcedules import Room, Schedule
+from app.models.shcedules import Room, Schedule, ActivityType
 from app.models.users import User
-from app.schemas.admin import BookRoom, CancelBooking
+from app.schemas.admin import CancelBooking
 from app.schemas.student import UserSchema
 
 from quart import websocket
@@ -54,22 +54,53 @@ class AdminService:
       return jsonify({"error": f"An error occurred"}), 500
     
   @staticmethod
-  async def book_room(book_room_info: BookRoom):
-    room = Room(name=book_room_info.room_name, capacity=book_room_info.capacity)
+  async def book_room(book_room_info):
+    try:
+        existing_book = "?"
+        date_str = book_room_info["date"]
+        start_str = book_room_info["start"]
+        end_str = book_room_info["end"]
 
-    start = datetime.strptime(book_room_info.start, "%H:%M").replace(second=0, microsecond=0)
-    end = datetime.strptime(book_room_info.end, "%H:%M").replace(second=0, microsecond=0)
+        current_year = datetime.now().year
+        full_date = datetime.strptime(f"{date_str}.{current_year}", "%d.%m.%Y")
 
-    start = utc_timezone.localize(start)
-    end = utc_timezone.localize(end)
+        start_time = datetime.strptime(start_str, "%H:%M").time()
+        end_time = datetime.strptime(end_str, "%H:%M").time()
 
-    schedule = Schedule(
-        rooms=room, start=start, end=end, group_name=book_room_info.group_name, activity=book_room_info.activity
-    )
-    schedule_dict = schedule.to_dict()
-    await schedule_collection.insert_one(schedule_dict)
+        start_datetime = datetime.combine(full_date.date(), start_time, tzinfo=utc_timezone)
+        end_datetime = datetime.combine(full_date.date(), end_time, tzinfo=utc_timezone)
 
-    return jsonify({"message": "Room booked successfully"})
+        existing_book = await schedule_collection.find_one({
+            "rooms.name": book_room_info["room_name"],
+            "$or": [
+                {"start": {"$lt": end_datetime}, "end": {"$gt": start_datetime}},  # Overlapping booking
+                {"start": start_datetime, "end": end_datetime}  # Exact match
+            ]
+        })
+
+        if existing_book:
+            return jsonify({"error": "Room is already booked for the selected time"}), 409
+
+
+        room = Room(name=book_room_info["room_name"], capacity=book_room_info["capacity"])
+        activity = ActivityType(book_room_info["activity"])  # Convert string to Enum
+
+        schedule = Schedule(
+            rooms=room,
+            start=start_datetime,
+            end=end_datetime,
+            group_name=book_room_info["group_name"],
+            is_fixed = book_room_info["is_fixed"],
+            activity=activity,
+        )
+
+        schedule_collection.insert_one(schedule.to_dict())
+        return jsonify({"message": "Room booked successfully"}), 201
+
+    except Exception as e:
+        print(f"Error booking room: {e}")
+        return jsonify({"error": "Enter valid values for booking"}), 400
+
 
   @staticmethod
   async def cancel_booking(cancel_room_info: CancelBooking):
@@ -107,17 +138,3 @@ class AdminService:
     user_db = User(**user_data).to_dict()
     await user_collection.insert_one(user_db)
     return {"message":f"user added successfully with name {user.name} and with unique code {user.secret_code}"}
-  
-  staticmethod
-  async def handle_websocket():
-        conn = websocket._get_current_object()  # Get current WebSocket connection
-        active_connections.add(conn)  # Add connection to active_connections
-        try:
-            while True:
-                message = await websocket.receive()  # Wait for messages from WebSocket
-                print(f"Received message: {message}")
-                await websocket.send(f"Echo: {message}")  # Echo the received message back
-        except Exception as e:
-            print(f"WebSocket error: {e}")
-        finally:
-            active_connections.remove(conn)

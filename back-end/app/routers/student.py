@@ -1,56 +1,66 @@
-from quart import Blueprint, request, jsonify, make_response,session
-from app.services.student import StudentService
-from app.utils.util_functions import generate_secret_code_admin,generate_secret_code_student
-from app.utils.check_role import is_student
+from quart import Blueprint, jsonify, websocket
+import aiohttp
+import json
 
-from app.schemas.student import Roles
+from app.services.active_connections import active_connections
+from app.schemas.student import BookingNotification
 
-router = Blueprint("students",__name__,url_prefix="/classrooms")
+from app.config.settings import settings
 
-@router.route("/",methods = ["GET"])
-async def get_rooms():
+
+router = Blueprint("students",__name__,url_prefix="/students")
+
+@router.route("/send-message", methods=["POST"])
+async def send_message_to_slack():
   try:
-    rooms = await StudentService.get_all_rooms()
-    return jsonify(rooms)
+    async with aiohttp.ClientSession() as session:
+      async with session.post(
+        'https://slack.com/api/chat.postMessage',
+        headers={"Authorization": f"Bearer {settings.SLACK_BOT_TOKEN}"},
+        json={
+          "channel": "#random",
+          "text": "Slack integration to classroom project"
+        }) as response:
+        if response.status == 200:
+          response_data = await response.json()
+          if response_data.get("ok"):
+            return jsonify({"message": "Message sent to Slack successfully!"}), 200
+          else:
+            error_message = response_data.get("error", "Unknown error")
+            return jsonify({"error": f"Slack API error: {error_message}"}), 400
+        else:
+          error_response = await response.json()
+          return jsonify({"error": "Failed to send message to Slack", "details": error_response}), 400
+
+  except aiohttp.ClientError as e:
+    return jsonify({"error": f"Error sending message to Slack: {e}"}), 500
+  except Exception as e:
+    return jsonify({"error": f"Unexpected error: {e}"}), 500
   
-  except Exception:
-    return jsonify({"error": f"An error occurred"}), 500
-
-@router.route("/<name>/<type>")
-async def get_room_by_name(name,type):
-  try:
-    room = await StudentService.filter_room(name,type) 
-    return jsonify(room) 
-  except Exception:
-    return jsonify({"error": f"An error occurred"}), 500
-
-@router.route("/login", methods=["POST"])
-async def login():
+@router.websocket("/student-ws")
+async def student_ws_connection():
+    conn = websocket._get_current_object()
+    active_connections.add(conn)
     try:
-      login_answer = await StudentService.login()
-      if login_answer.status_code == 200: 
-          answer = await login_answer.json
-          response = await make_response(answer)
-          response.status_code = 200
-            
-          if login_answer.role == Roles.STUDENT.value:
-            secret_code = generate_secret_code_student()
-            response.headers["x-api-key"] = secret_code
-            session["x-api-key"] = secret_code
+        while True:
+            message = await websocket.receive()
+            try:
+              message_dict = json.loads(message)
+              data = BookingNotification(**message_dict)
+            except:
+                await websocket.send_json({"error": "Invalid arguments"})
+                continue
+            data = data.model_dump()
+            await broadcast_to_admins(f"Notification from Student: {data}")
 
-          elif login_answer.role == Roles.ADMIN.value:
-            secret_code = generate_secret_code_admin()
-            response.headers["x-api-key"] = secret_code
-            session["x-api-key"] = secret_code
-
-          return response  
-        
-      return login_answer  
-    
     except Exception as e:
-        return jsonify({"error": f"Something went wrong: {str(e)}"}), 500
-
-@router.route("/logout", methods=["GET"])
-async def logout():
-    session.clear()
-    return jsonify({"message": "Logged out successfully"})
+        await websocket.send_json({"error": f"Error with WebSocket connection: {str(e)}"})
+    finally:
+        active_connections.remove(conn)
+     
+async def broadcast_to_admins(message: str):
+    for conn in list(active_connections): 
+        try:
+            await conn.send(message)
+        except Exception:
+            active_connections.remove(conn)  
